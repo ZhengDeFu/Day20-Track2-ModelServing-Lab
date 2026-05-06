@@ -1,123 +1,117 @@
 # Reflection — Lab 20 (Personal Report)
 
-> **Đây là báo cáo cá nhân.** Mỗi học viên chạy lab trên laptop của mình, với spec của mình. Số liệu của bạn không so sánh được với bạn cùng lớp — chỉ so sánh **before vs after trên chính máy bạn**. Grade rubric tính theo độ rõ ràng của setup + tuning của bạn, không phải tốc độ tuyệt đối.
+> Đây là báo cáo cá nhân. Mỗi học viên chạy lab trên laptop của mình, với spec của mình. Số liệu bên dưới chỉ dùng để so sánh before vs after trên chính máy này.
 
 ---
 
-**Họ Tên:** _<Họ Tên>_
-**Cohort:** _<A20-K1 / A20-K2 / ...>_
-**Ngày submit:** _<YYYY-MM-DD>_
+**Họ Tên:** Trịnh Đắc Phú
+**Cohort:** Chưa cung cấp
+**Ngày submit:** 2026-05-06
 
 ---
 
 ## 1. Hardware spec (từ `00-setup/detect-hardware.py`)
 
-> Paste output của `python 00-setup/detect-hardware.py` vào đây, hoặc điền thủ công:
+- **OS:** Ubuntu Linux
+- **CPU:** AMD Ryzen 5 5500U with Radeon Graphics
+- **Cores:** 12 physical / 12 logical theo `hardware.json`
+- **CPU extensions:** AVX2
+- **RAM:** 15.0 GB
+- **Accelerator:** NVIDIA GeForce GTX 1650, 4096 MiB
+- **llama.cpp backend đã chọn:** CPU runtime cho bài nộp chính; CUDA được detect nhưng chưa dùng ổn định vì `nvidia-smi` không giao tiếp được với driver và build CUDA thiếu CUDA Toolkit (`nvcc`).
+- **Recommended model tier:** Qwen2.5-1.5B-Instruct (Q4_K_M)
 
-- **OS:** _<macOS 14 / Windows 11 / Ubuntu 24.04 / ...>_
-- **CPU:** _<Apple M2 / Intel i7-12700H / AMD Ryzen 7 5800H / ...>_
-- **Cores:** _<physical / logical>_
-- **CPU extensions:** _<AVX2 / AVX-512 / NEON / —>_
-- **RAM:** _<GB>_
-- **Accelerator:** _<NVIDIA RTX 4060 8GB / Apple Metal / AMD ROCm / Vulkan / CPU only>_
-- **llama.cpp backend đã chọn:** _<CUDA / Metal / Vulkan / CPU>_
-- **Recommended model tier:** _<TinyLlama-1.1B / Qwen2.5-1.5B / Llama-3.2-3B / Qwen2.5-7B>_
+**Setup story** (≤ 80 chữ):
 
-**Setup story** (≤ 80 chữ): những gì cần thay đổi để lab chạy được trên máy bạn (vd: dùng WSL2, install CUDA Toolkit, fall back sang Vulkan vì ROCm phiên bản kén, tắt antivirus để pip install nhanh hơn, v.v.):
-
-_Answer here._
+Máy có GTX 1650 4GB nhưng CUDA path chưa ổn định: `nvidia-smi` lỗi driver và build `llama-cpp-python` CUDA thiếu `nvcc`. Vì vậy bài chạy bằng `llama-cpp-python` CPU để tránh treo RAM/driver. Python server chạy được OpenAI-compatible endpoint, nhưng `/metrics` không khả dụng.
 
 ---
 
 ## 2. Track 01 — Quickstart numbers (từ `benchmarks/01-quickstart-results.md`)
 
-> Paste bảng từ `benchmarks/01-quickstart-results.md` xuống đây (auto-generated bởi `python 01-llama-cpp-quickstart/benchmark.py`).
-
 | Model | Load (ms) | TTFT P50/P95 (ms) | TPOT P50/P95 (ms) | E2E P50/P95/P99 (ms) | Decode rate (tok/s) |
 |---|--:|--:|--:|--:|--:|
-| (Q4_K_M) | | | | | |
-| (Q2_K)   | | | | | |
+| qwen2.5-1.5b-instruct-q4_k_m.gguf | 1993 | 111 / 129 | 36.2 / 38.5 | 2398 / 2548 / 2557 | 27.6 |
+| qwen2.5-1.5b-instruct-q2_k.gguf | 990 | 133 / 167 | 25.9 / 27.9 | 1760 / 1863 / 1872 | 38.6 |
 
-**Một quan sát** (≤ 50 chữ): Q4_K_M vs Q2_K trên máy bạn — số liệu nói gì? Quality đáng đánh đổi không?
+**Một quan sát** (≤ 50 chữ):
 
-_Answer here._
+Q2_K nhanh hơn rõ ở decode rate (38.6 tok/s so với 27.6 tok/s) và load nhanh hơn, nhưng Q4_K_M hợp lý hơn nếu cần chất lượng trả lời ổn định. Với RAM 15GB, Q4_K_M vẫn chạy được.
 
 ---
 
 ## 3. Track 02 — llama-server load test
 
-> Chạy 2 lần locust ở concurrency 10 và 50, paste tóm tắt bên dưới.
-
 | Concurrency | Total RPS | TTFB P50 (ms) | E2E P95 (ms) | E2E P99 (ms) | Failures |
 |--:|--:|--:|--:|--:|--:|
-| 10 | | | | | |
-| 50 | | | | | |
+| 10 | 0.25 | N/A | 38000 | 38000 | 0 |
+| 50 | 0.25 | N/A | 43000 | 43000 | 0 |
 
-**KV-cache observation** (từ `record-metrics.py`): peak `llamacpp:kv_cache_usage_ratio` ở concurrency 50 = _<0.XX>_, nghĩa là …
+Locust trong lần chạy này đo full response time, chưa tách riêng TTFB. Vì server dùng `python -m llama_cpp.server`, OpenAI-compatible `/v1/chat/completions` chạy được nhưng `/metrics` trả `{"detail":"Not Found"}`.
 
-_Answer here._
+**KV-cache observation** (từ `record-metrics.py`):
+
+Không đo được peak `llamacpp:kv_cache_usage_ratio` trong lần nộp này vì Python server không expose Prometheus `/metrics`. Đây là giới hạn của runtime đang dùng, không phải lỗi của endpoint chat. Nếu chuyển sang native `llama-server --metrics` sau khi build llama.cpp thành công, mục này có thể đo lại.
 
 ---
 
 ## 4. Track 03 — Milestone integration
 
-- **N16 (Cloud/IaC):** _<piece you connected — k3d cluster / GCP project / docker-compose / "stub: localhost only">_
-- **N17 (Data pipeline):** _<piece — Airflow DAG / batch job / "stub: in-memory dict">_
-- **N18 (Lakehouse):** _<piece — Delta Lake table / Iceberg / "stub: SQLite">_
-- **N19 (Vector + Feature Store):** _<piece — Qdrant index / Feast / "stub: TOY_DOCS">_
+- **N16 (Cloud/IaC):** stub: localhost only, gọi local llama-server ở `http://localhost:8080/v1`
+- **N17 (Data pipeline):** stub: in-memory toy documents
+- **N18 (Lakehouse):** stub: chưa nối Delta/Iceberg/SQLite thật trong repo này
+- **N19 (Vector + Feature Store):** stub: `TOY_DOCS` và keyword-overlap retrieval trong `pipeline.py`
 
 **Nơi tốn nhiều ms nhất** trong pipeline (đo bằng `time.perf_counter` trong `pipeline.py`):
 
-- embed: _<ms>_
-- retrieve: _<ms>_
-- llama-server: _<ms>_
+- embed: 0 ms (không dùng embedder thật)
+- retrieve: khoảng 0-1 ms vì chỉ keyword search trên list nhỏ
+- llama-server: lớn nhất; cùng loại request smoke test mất khoảng 1477-1636 ms, còn dưới load có thể lên 38-43 giây P95
 
-**Reflection** (≤ 60 chữ): bottleneck nằm ở đâu? Có khớp với kỳ vọng không?
+**Reflection** (≤ 60 chữ):
 
-_Answer here._
+Bottleneck nằm ở llama-server, đúng với kỳ vọng vì retrieval đang là stub rất nhỏ. Khi có vector index thật, embed/retrieve sẽ tăng một ít, nhưng trên máy này decode/local inference vẫn là phần chi phối latency.
 
 ---
 
 ## 5. Bonus — The single change that mattered most
 
-> **Most important section.** Pick **một** thay đổi từ bonus track (build flag, thread sweep, quant pick, GPU offload, KV-cache quantization, speculative decoding, bất cứ challenge nào trong `BONUS-llama-cpp-optimization/CHALLENGES.md`) đã tạo ra speedup lớn nhất trên máy bạn.
+**Change:** So sánh quantization Q4_K_M sang Q2_K trong Track 01. Bonus source build/thread sweep chưa hoàn tất vì `llama-bench` chưa được build và build full có nguy cơ treo trên máy 16GB.
 
-**Change:** _<vd: rebuild llama.cpp với `-DGGML_NATIVE=ON -DGGML_BLAS=ON`; vd: hạ `-t` từ 12 xuống 6; vd: bật Metal trên M2>_
+**Before vs after**:
 
-**Before vs after** (paste 2-3 dòng từ sweep output):
-
-```
-before: <số liệu>
-after:  <số liệu>
-speedup: ~<X.Y>×
+```text
+before: Q4_K_M decode rate 27.6 tok/s, E2E P95 2548 ms
+after:  Q2_K decode rate 38.6 tok/s, E2E P95 1863 ms
+speedup: ~1.40x theo decode rate, ~1.37x theo E2E P95
 ```
 
-**Tại sao nó work** (1–2 đoạn ngắn — đây là phần grader đọc kỹ nhất):
+**Tại sao nó work**:
 
-_Giải thích như đang nói với một bạn cùng lớp đang ngồi cạnh. Tránh "vibes-based" reasoning — bám vào mô hình mental của hardware (memory bandwidth? compute? cache?). Nếu kết quả khác kỳ vọng từ deck, nói rõ — đó là phần grader thưởng điểm._
+Q2_K dùng ít bit hơn cho trọng số nên lượng dữ liệu cần đọc từ RAM thấp hơn. Trên laptop CPU, decode thường bị giới hạn bởi memory bandwidth hơn là pure compute, nên giảm kích thước weight giúp mỗi token đi qua model nhanh hơn.
+
+Tradeoff là quality. Q2_K hợp lý khi RAM rất chật hoặc cần tốc độ, nhưng với RAM 15GB, Q4_K_M vẫn chạy được và là lựa chọn cân bằng hơn cho câu trả lời ổn định.
 
 ---
 
 ## 6. (Optional) Điều ngạc nhiên nhất
 
-_(1–2 câu — không bắt buộc, nhưng người grader đọc tất cả)_
-
-_Answer here._
+Máy có GPU NVIDIA nhưng không tự động dùng được CUDA nếu driver/CUDA Toolkit chưa sạch. Với lab này, CPU path chậm hơn nhưng ổn định hơn để lấy số liệu và hoàn thành flow end-to-end.
 
 ---
 
 ## 7. Self-graded checklist
 
-- [ ] `hardware.json` đã commit
-- [ ] `models/active.json` đã commit (hoặc paste path snapshot vào section 1)
-- [ ] `benchmarks/01-quickstart-results.md` đã commit
-- [ ] `benchmarks/02-server-results.md` (hoặc CSV từ `record-metrics.py`) đã commit
-- [ ] `benchmarks/bonus-*.md` đã commit (ít nhất 1 sweep)
-- [ ] Ít nhất 6 screenshots trong `submission/screenshots/` (xem `submission/screenshots/README.md`)
+- [x] `hardware.json` đã commit
+- [x] `models/active.json` đã commit
+- [x] `benchmarks/01-quickstart-results.md` đã commit
+- [x] `benchmarks/02-server-results.md` đã commit dựa trên locust screenshots
+- [ ] `benchmarks/bonus-*.md` đã commit (bonus source build chưa hoàn tất)
+- [x] Ít nhất 6 screenshots trong `submission/screenshots/` (xem `submission/screenshots/README.md`)
 - [ ] `make verify` exit 0 (chạy ngay trước khi push)
-- [ ] Repo trên GitHub ở chế độ **public**
+- [ ] Repo trên GitHub ở chế độ public
 - [ ] Đã paste public repo URL vào VinUni LMS
 
 ---
 
-**Quan trọng:** repo phải **public** đến khi điểm được công bố. Nếu private, grader không xem được → 0 điểm.
+**Quan trọng:** repo phải public đến khi điểm được công bố. Nếu private, grader không xem được.
